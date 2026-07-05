@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ER Diagram Interpreter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="sheet">
+
+  <header class="title-block">
+    <div class="title-block__left">
+      <span class="eyebrow">DRAWING NO. ERD-001</span>
+      <h1>ER Diagram Interpreter</h1>
+      <p class="subhead">Upload a sketch. Get back a schema, a query set, and a redrawn diagram.</p>
+    </div>
+    <div class="title-block__right">
+      <div class="tb-field"><span>SCALE</span><strong>1:1</strong></div>
+      <div class="tb-field"><span>REV</span><strong id="rev">—</strong></div>
+      <div class="tb-field"><span>ENGINE</span><strong>Ollama · local</strong></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel upload-panel" id="uploadPanel">
+      <div class="panel__label">01 — Input</div>
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept="image/*" hidden />
+        <div class="dropzone__hint">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <p><strong>Drop your ER diagram</strong><br/>or click to browse — PNG, JPG</p>
+        </div>
+        <img id="preview" class="dropzone__preview" hidden />
+      </div>
+
+      <div class="model-row">
+        <label>
+          <span>Vision model</span>
+          <input type="text" id="visionModel" value="moondream" />
+        </label>
+        <label>
+          <span>Text model</span>
+          <input type="text" id="textModel" value="llama3.2" />
+        </label>
+      </div>
+
+      <button id="analyzeBtn" class="btn btn--primary" disabled>Interpret diagram</button>
+      <p class="status" id="status"></p>
+    </section>
+
+    <section class="panel results-panel" id="resultsPanel" hidden>
+      <div class="panel__label">02 — Output</div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="diagram">Refined diagram</button>
+        <button class="tab" data-tab="schema">Schema JSON</button>
+        <button class="tab" data-tab="sql">SQL</button>
+      </div>
+
+      <div class="tab-content active" id="tab-diagram">
+        <img id="diagramImg" alt="Refined ER diagram" />
+        <div class="download-row">
+          <a class="btn btn--ghost" id="downloadPng" download>Download PNG</a>
+          <a class="btn btn--ghost" id="downloadSvg" download>Download SVG</a>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-schema">
+        <pre><code id="schemaOutput"></code></pre>
+      </div>
+
+      <div class="tab-content" id="tab-sql">
+        <pre><code id="sqlOutput"></code></pre>
+        <div class="download-row">
+          <a class="btn btn--ghost" id="downloadSql" download>Download .sql</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="title-block title-block--footer">
+    <span>ER DIAGRAM INTERPRETER</span>
+    <span>NODE.JS + PYTHON + GRAPHVIZ + OLLAMA</span>
+    <span id="dateStamp"></span>
+  </footer>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

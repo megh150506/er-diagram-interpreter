@@ -1,0 +1,9 @@
+node_modules/
+uploads/*
+!uploads/.gitkeep
+output/*
+!output/.gitkeep
+*.log
+.env
+__pycache__/
+*.pyc
