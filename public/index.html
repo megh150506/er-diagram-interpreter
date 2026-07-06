@@ -28,16 +28,36 @@
   <main>
     <section class="panel upload-panel" id="uploadPanel">
       <div class="panel__label">01 — Input</div>
-      <div class="dropzone" id="dropzone">
-        <input type="file" id="fileInput" accept="image/*" hidden />
-        <div class="dropzone__hint">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <p><strong>Drop your ER diagram</strong><br/>or click to browse — PNG, JPG</p>
+
+      <div class="mode-toggle">
+        <button class="mode-btn active" data-mode="image">Upload image</button>
+        <button class="mode-btn" data-mode="text">Describe in English</button>
+      </div>
+
+      <div class="input-mode active" id="mode-image">
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept="image/*" hidden />
+          <div class="dropzone__hint">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <p><strong>Drop your ER diagram</strong><br/>or click to browse — PNG, JPG</p>
+          </div>
+          <img id="preview" class="dropzone__preview" hidden />
         </div>
-        <img id="preview" class="dropzone__preview" hidden />
+      </div>
+
+      <div class="input-mode" id="mode-text">
+        <textarea
+          id="descriptionInput"
+          class="description-input"
+          placeholder="Describe your ER diagram in plain English, e.g.:
+
+A Student has student_id as the primary key, and a name.
+A Course has course_id as the primary key, and a title.
+Students enroll in many courses, and each course can have many students (Enrolls relationship, many-to-many)."
+        ></textarea>
       </div>
 
       <div class="model-row">

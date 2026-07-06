@@ -24,7 +24,7 @@ const crypto = require("crypto");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const PYTHON_BIN = process.env.PYTHON_BIN || "python3";
+const PYTHON_BIN = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
 
 const UPLOAD_DIR = path.join(__dirname, "uploads");
 const OUTPUT_DIR = path.join(__dirname, "output");
@@ -74,16 +74,21 @@ function runPython(scriptName, args = []) {
 
 /**
  * POST /api/analyze
- * Body: multipart/form-data, field "diagram" = image file
- * Optional query params: ?visionModel=llava&textModel=llama3
+ * Body: multipart/form-data with EITHER:
+ *   - field "diagram" = image file, OR
+ *   - field "description" = plain-English text describing the ER diagram
+ * Optional query params: ?visionModel=moondream&textModel=llama3.2
  */
 app.post("/api/analyze", upload.single("diagram"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No image uploaded (field name: diagram)" });
+  const description = (req.body.description || "").trim();
+
+  if (!req.file && !description) {
+    return res.status(400).json({
+      error: "Provide either an image (field: diagram) or a text description (field: description).",
+    });
   }
 
   const jobId = crypto.randomUUID();
-  const imagePath = req.file.path;
   const schemaPath = path.join(OUTPUT_DIR, `${jobId}.schema.json`);
   const sqlPath = path.join(OUTPUT_DIR, `${jobId}.sql`);
   const diagramBase = path.join(OUTPUT_DIR, `${jobId}.refined`);
@@ -92,13 +97,14 @@ app.post("/api/analyze", upload.single("diagram"), async (req, res) => {
   const textModel = req.query.textModel || "llama3.2";
 
   try {
-    // 1. Interpret the raw image into structured JSON via a two-stage
-    //    pipeline: vision model describes it, text model converts to JSON
-    const schemaRaw = await runPython("interpret_er.py", [
-      imagePath,
-      "--model", visionModel,
-      "--text-model", textModel,
-    ]);
+    // 1. Interpret into structured JSON - either from an image (two-stage:
+    //    vision model describes it, text model converts to JSON) or
+    //    directly from typed English text (skips the vision step).
+    const interpretArgs = req.file
+      ? [req.file.path, "--model", visionModel, "--text-model", textModel]
+      : ["--description", description, "--text-model", textModel];
+
+    const schemaRaw = await runPython("interpret_er.py", interpretArgs);
     fs.writeFileSync(schemaPath, schemaRaw);
 
     // 2. Generate SQL (deterministic CREATE TABLEs + Ollama sample queries)
@@ -121,9 +127,6 @@ app.post("/api/analyze", upload.single("diagram"), async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Pipeline failed", detail: err.message });
-  } finally {
-    // Keep uploaded image only for debugging; remove if you don't need it
-    // fs.unlink(imagePath, () => {});
   }
 });
 

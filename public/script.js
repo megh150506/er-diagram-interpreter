@@ -7,10 +7,37 @@ const statusEl = document.getElementById("status");
 const resultsPanel = document.getElementById("resultsPanel");
 const revEl = document.getElementById("rev");
 const dateStamp = document.getElementById("dateStamp");
+const descriptionInput = document.getElementById("descriptionInput");
+const modeButtons = document.querySelectorAll(".mode-btn");
 
 let selectedFile = null;
+let currentMode = "image";
 
 dateStamp.textContent = new Date().toISOString().slice(0, 10);
+
+// --- Mode toggle (image upload vs typed description) ---
+modeButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    modeButtons.forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentMode = btn.dataset.mode;
+
+    document.querySelectorAll(".input-mode").forEach((el) => el.classList.remove("active"));
+    document.getElementById(`mode-${currentMode}`).classList.add("active");
+
+    updateAnalyzeButtonState();
+  });
+});
+
+function updateAnalyzeButtonState() {
+  if (currentMode === "image") {
+    analyzeBtn.disabled = !selectedFile;
+  } else {
+    analyzeBtn.disabled = descriptionInput.value.trim().length === 0;
+  }
+}
+
+descriptionInput.addEventListener("input", updateAnalyzeButtonState);
 
 // --- Dropzone interactions ---
 dropzone.addEventListener("click", () => fileInput.click());
@@ -45,7 +72,7 @@ function handleFile(file) {
     hint.style.display = "none";
   };
   reader.readAsDataURL(file);
-  analyzeBtn.disabled = false;
+  updateAnalyzeButtonState();
   setStatus("");
 }
 
@@ -56,16 +83,23 @@ function setStatus(msg, type = "") {
 
 // --- Analyze pipeline ---
 analyzeBtn.addEventListener("click", async () => {
-  if (!selectedFile) return;
-
-  const visionModel = document.getElementById("visionModel").value.trim() || "llava";
-  const textModel = document.getElementById("textModel").value.trim() || "llama3";
+  const visionModel = document.getElementById("visionModel").value.trim() || "moondream";
+  const textModel = document.getElementById("textModel").value.trim() || "llama3.2";
 
   analyzeBtn.disabled = true;
-  setStatus("Running Ollama vision pass, generating SQL, rendering diagram…");
 
   const formData = new FormData();
-  formData.append("diagram", selectedFile);
+
+  if (currentMode === "image") {
+    if (!selectedFile) return;
+    formData.append("diagram", selectedFile);
+    setStatus("Running Ollama vision pass, generating SQL, rendering diagram…");
+  } else {
+    const description = descriptionInput.value.trim();
+    if (!description) return;
+    formData.append("description", description);
+    setStatus("Converting description to schema, generating SQL, rendering diagram…");
+  }
 
   try {
     const res = await fetch(
@@ -84,7 +118,7 @@ analyzeBtn.addEventListener("click", async () => {
   } catch (err) {
     setStatus(err.message, "error");
   } finally {
-    analyzeBtn.disabled = false;
+    updateAnalyzeButtonState();
   }
 });
 

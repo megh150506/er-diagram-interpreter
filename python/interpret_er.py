@@ -2,15 +2,28 @@
 """
 interpret_er.py
 ---------------
-Sends a hand-drawn / photographed ER diagram image to a local Ollama
-vision model (default: llava) and asks it to return a strict JSON
-description of the entities, attributes, and relationships.
+Turns an ER diagram into structured JSON via one of two input modes:
+
+  1. IMAGE MODE: a photo/sketch of an ER diagram.
+     -> A local Ollama vision model (default: moondream) describes it in
+        plain English, then a local Ollama text model (default: llama3.2)
+        converts that description into strict JSON.
+
+  2. TEXT MODE: a plain-English description typed directly by the user
+     (e.g. "A Student has student_id as primary key and a name. A Course
+     has course_id as primary key and a title. Students enroll in many
+     courses and each course can have many students.")
+     -> Skips the vision step entirely and goes straight to JSON conversion.
+
+Includes a one-time retry if the model fails to produce valid, non-empty
+JSON on the first attempt, plus a robust brace-matching JSON extractor
+(more reliable than a plain regex when models add stray text).
 
 Usage:
-    python3 interpret_er.py <image_path> [--model llava] [--host http://localhost:11434]
+    python3 interpret_er.py <image_path> [--model moondream] [--text-model llama3.2]
+    python3 interpret_er.py --description "A Student has..." [--text-model llama3.2]
 
-Prints the resulting JSON schema to stdout (and only the JSON - no logs),
-so it can be piped directly into other tools.
+Prints the resulting JSON schema to stdout.
 """
 
 import sys
@@ -83,13 +96,25 @@ Rules:
 - Infer a reasonable SQL type per attribute if not stated.
 - If no primary key is mentioned for an entity, infer the most likely one (commonly "<entity>_id").
 - If cardinality isn't stated, make your best guess (default to "1:N").
-- Output ONLY the JSON object, nothing else.
+- There must be at least one entity in the output. If the description truly
+  describes no entities at all, return {{"entities": [], "relationships": []}}.
+- Output ONLY the JSON object, nothing else - no preamble, no closing remarks.
 
 Description to convert:
 \"\"\"
 {description}
 \"\"\"
 """
+
+# Used on retry, when the model's first attempt wasn't valid/usable JSON.
+# NOTE: unlike JSON_CONVERSION_PROMPT_TEMPLATE, this string is NOT passed
+# through .format(), so braces here must be single (not doubled/escaped).
+JSON_RETRY_SUFFIX = """
+
+IMPORTANT: Your previous response was not acceptable (either invalid JSON or
+missing data). This time, respond with ONLY the raw JSON object - it must
+start with { and end with }, with no words, labels, or markdown fences
+before or after it."""
 
 
 def image_to_base64(path: str) -> str:
@@ -149,16 +174,48 @@ def call_ollama_generate(host: str, model: str, prompt: str, image_b64: str = No
         )
 
 
+def find_balanced_json_object(text: str) -> str:
+    """
+    Scans for the first '{' and returns the substring up to its matching
+    '}', counting nested braces. More robust than a greedy regex when the
+    model adds explanatory text with its own stray braces before/after.
+    """
+    start = text.find("{")
+    if start == -1:
+        raise json.JSONDecodeError("No '{' found in response", text, 0)
+
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
+
+    raise json.JSONDecodeError("Unbalanced braces in response", text, start)
+
+
 def extract_json(text: str) -> dict:
     """Ollama sometimes wraps JSON in markdown fences or adds stray text."""
     fence_match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     candidate = fence_match.group(1) if fence_match else text
 
-    # Fallback: grab the widest {...} block if there's still extra text around it
     if not candidate.strip().startswith("{"):
-        brace_match = re.search(r"\{.*\}", candidate, re.DOTALL)
-        if brace_match:
-            candidate = brace_match.group(0)
+        candidate = find_balanced_json_object(candidate)
 
     return json.loads(candidate)
 
@@ -178,36 +235,68 @@ def validate_schema(schema: dict) -> dict:
     return schema
 
 
+def convert_description_to_json(host: str, text_model: str, description: str) -> dict:
+    """
+    Sends the description to the text model and tries to get back valid,
+    non-empty JSON. Retries once with a stricter reminder if the first
+    attempt fails or comes back with zero entities (a common silent-failure
+    mode for small local models).
+    """
+    conversion_prompt = JSON_CONVERSION_PROMPT_TEMPLATE.format(description=description)
+    last_error = None
+    last_raw = ""
+
+    for attempt in range(2):
+        prompt = conversion_prompt if attempt == 0 else conversion_prompt + JSON_RETRY_SUFFIX
+        raw_response = call_ollama_generate(host, text_model, prompt)
+        last_raw = raw_response
+        try:
+            schema = extract_json(raw_response)
+            schema = validate_schema(schema)
+        except json.JSONDecodeError as je:
+            last_error = f"invalid JSON ({je})"
+            continue
+
+        if not schema["entities"]:
+            last_error = "the model returned zero entities"
+            continue
+
+        return schema  # success
+
+    raise RuntimeError(
+        f"Text model '{text_model}' failed to produce a usable schema after 2 attempts "
+        f"(last issue: {last_error}). Raw last response was: {last_raw[:500]!r}"
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("image_path")
+    parser.add_argument("image_path", nargs="?", default=None,
+                        help="Path to an ER diagram image (omit if using --description)")
+    parser.add_argument("--description", default=None,
+                        help="Plain-English description of the ER diagram, as an alternative to an image")
     parser.add_argument("--model", default="moondream", help="Vision model (describes the image)")
     parser.add_argument("--text-model", default="llama3.2", help="Text model (converts description to JSON)")
     parser.add_argument("--host", default="http://localhost:11434")
     args = parser.parse_args()
 
     try:
-        image_b64 = image_to_base64(args.image_path)
+        if not args.image_path and not args.description:
+            raise RuntimeError("Provide either an image path or --description text.")
 
-        # Stage 1: vision model describes the diagram in plain English
-        description = call_ollama_generate(args.host, args.model, VISION_PROMPT, image_b64=image_b64)
-        if not description.strip():
-            raise RuntimeError(f"Vision model '{args.model}' returned an empty description.")
+        if args.description:
+            description = args.description.strip()
+            if not description:
+                raise RuntimeError("--description was provided but empty.")
+        else:
+            image_b64 = image_to_base64(args.image_path)
+            description = call_ollama_generate(args.host, args.model, VISION_PROMPT, image_b64=image_b64)
+            if not description.strip():
+                raise RuntimeError(f"Vision model '{args.model}' returned an empty description.")
 
-        # Stage 2: text model converts that description into strict JSON
-        conversion_prompt = JSON_CONVERSION_PROMPT_TEMPLATE.format(description=description)
-        raw_response = call_ollama_generate(args.host, args.text_model, conversion_prompt)
-
-        try:
-            schema = extract_json(raw_response)
-        except json.JSONDecodeError as je:
-            raise RuntimeError(
-                f"Text model '{args.text_model}' did not return valid JSON ({je}). "
-                f"Vision description was: {description[:300]!r} | "
-                f"Raw conversion response was: {raw_response[:500]!r}"
-            )
-        schema = validate_schema(schema)
+        schema = convert_description_to_json(args.host, args.text_model, description)
         print(json.dumps(schema, indent=2))
+
     except Exception as e:
         # Emit a minimal, still-valid JSON schema on failure so downstream
         # steps don't crash, plus the error goes to stderr for logging.

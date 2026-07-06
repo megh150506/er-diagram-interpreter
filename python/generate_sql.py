@@ -164,7 +164,24 @@ def main():
     with open(args.schema_path, "r") as f:
         schema = json.load(f)
 
+    if not schema.get("entities"):
+        print(
+            "-- No entities were extracted from the diagram, so no schema could "
+            "be generated.\n"
+            "-- This usually means the vision/description step didn't produce "
+            "usable data - try a clearer image or a more detailed description."
+        )
+        return
+
     ddl = build_create_tables(schema)
+
+    if not ddl.strip().count("CREATE TABLE"):
+        print(ddl)
+        print(
+            "\n-- No sample queries were generated because no tables were created."
+        )
+        return
+
     sample_queries = call_ollama_for_queries(args.host, args.model, schema, ddl)
 
     output = ddl + "\n\n-- ==========================================\n"

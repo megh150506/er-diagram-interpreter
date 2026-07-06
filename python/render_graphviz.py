@@ -92,6 +92,21 @@ def build_graph(schema: dict) -> Digraph:
     return dot
 
 
+def build_placeholder_graph(message: str) -> Digraph:
+    """Used when there's nothing to draw, so the user gets a clear signal
+    instead of a blank image that looks like something silently broke."""
+    dot = Digraph("ER", format="png")
+    dot.attr(bgcolor="white")
+    dot.node(
+        "no_data",
+        label=f"<<FONT COLOR=\"#a94442\">{message}</FONT>>",
+        shape="plaintext",
+        fontname="Helvetica",
+        fontsize="14",
+    )
+    return dot
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("schema_path")
@@ -101,7 +116,12 @@ def main():
     with open(args.schema_path, "r") as f:
         schema = json.load(f)
 
-    dot = build_graph(schema)
+    if not schema.get("entities"):
+        dot = build_placeholder_graph(
+            "No entities could be extracted from this diagram/description."
+        )
+    else:
+        dot = build_graph(schema)
 
     # Render both PNG and SVG
     dot.format = "png"

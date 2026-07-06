@@ -109,6 +109,50 @@ main {
 }
 
 /* ---------- Dropzone ---------- */
+.mode-toggle {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 18px;
+}
+.mode-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  background: var(--navy-deep);
+  color: var(--ink-muted);
+  border: 1px solid rgba(143, 168, 196, 0.3);
+  padding: 9px 16px;
+  cursor: pointer;
+  flex: 1;
+}
+.mode-btn.active {
+  color: var(--amber);
+  border-color: var(--amber-dim);
+}
+
+.input-mode { display: none; }
+.input-mode.active { display: block; }
+
+.description-input {
+  width: 100%;
+  min-height: 220px;
+  background: var(--navy-deep);
+  border: 1px solid rgba(143, 168, 196, 0.4);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 14px;
+  resize: vertical;
+}
+.description-input::placeholder {
+  color: rgba(143, 168, 196, 0.55);
+}
+.description-input:focus {
+  outline: none;
+  border-color: var(--cyan);
+}
+
 .dropzone {
   border: 1.5px dashed rgba(143, 168, 196, 0.5);
   min-height: 220px;
